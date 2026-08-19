@@ -8,34 +8,65 @@ on:
 jobs:
   build:
     runs-on: macos-14
+
     steps:
-    - uses: actions/checkout@v4
-    - uses: maxim-lobanov/setup-xcode@v1
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Xcode
+      uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: 'latest-stable'
-    - name: Build and Sign
-      run: |
-        xcodebuild -project StepsWrite.xcodeproj -scheme StepsWrite -configuration Release -sdk iphoneos \
-                   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
-        
-        brew install ldid
-        mkdir -p Payload
-        cp -R build/Release-iphoneos/StepsWrite.app Payload/
-        
-        # 샌드박스 우회 특수 Entitlements 생성
-        cat <<EOF > ent.plist
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
-        <plist version="1.0"><dict>
-            <key>com.apple.developer.healthkit</key><true/>
-            <key>com.apple.private.security.no-sandbox</key><true/>
-            <key>platform-application</key><true/>
-        </dict></plist>
-        EOF
-        
-        ldid -Sent.plist Payload/StepsWrite.app/StepsWrite
-        zip -r StepsWrite.ipa Payload
 
-    - uses: actions/upload-artifact@v4
+    - name: Build Archive
+      run: |
+        xcodebuild -project StepsWrite.xcodeproj \
+                   -scheme StepsWrite \
+                   -configuration Release \
+                   -sdk iphoneos \
+                   -archivePath $PWD/build/StepsWrite.xcarchive \
+                   CODE_SIGNING_ALLOWED=NO \
+                   CODE_SIGNING_REQUIRED=NO \
+                   CODE_SIGN_IDENTITY="" \
+                   PROVISIONING_PROFILE_SPECIFIER="" \
+                   DEVELOPMENT_TEAM="" \
+                   archive
+
+    - name: Package IPA and Bypass HealthKit Sandbox
+      run: |
+        # 1. 가짜 서명 및 권한 테이핑 도구 ldid 설치
+        brew install ldid
+        
+        # 2. 패키징용 임시 Payload 폴더 구조 생성
+        mkdir -p Payload
+        
+        # 3. ⚠️ 핵심 교정: xcarchive 내부 정석 경로로부터 .app 구조 완벽 복사
+        cp -R build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app Payload/
+        
+        # 4. iOS 16 건강 앱 보안 샌드박스를 강제 돌파하기 위한 특수 우회 Entitlements 파일 제조
+        cat <<EOF > trollstore_health.entitlements
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+        <plist version="1.0">
+        <dict>
+            <key>com.apple.developer.healthkit</key>
+            <true/>
+            <key>com.apple.private.security.no-sandbox</key>
+            <true/>
+            <key>platform-application</key>
+            <true/>
+        </dict>
+        </plist>
+        EOF
+
+        # 5. 추출 제조한 권한 구조를 무서명 앱 바이너리에 강제 낙인각인 (튕김 현상 해결 핵심)
+        ldid -Strollstore_health.entitlements Payload/StepsWrite.app/StepsWrite
+        
+        # 6. 최종 트롤스토어 전용 IPA 파일 압축 패키징
+        zip -r StepsWrite_TrollStore.ipa Payload
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
       with:
         name: TrollStore-IPA
-        path: StepsWrite.ipa
+        path: StepsWrite_TrollStore.ipa
