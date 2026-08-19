@@ -1,0 +1,51 @@
+name: Build TrollStore IPA
+
+on:
+  push:
+    branches: [ "main" ] # 본인의 메인 브랜치 이름 확인
+
+jobs:
+  build:
+    runs-on: macos-14 # 최신 M1/M2 가상머신 사용 권장
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: 'latest-stable'
+
+    # CocoaPods를 사용하는 경우에만 이 주석을 해제하고 사용하세요
+    # - name: Install Pods
+    #   run: pod install
+
+    - name: Build Archive
+      run: |
+        xcodebuild -workspace YourProject.xcworkspace \
+                   -scheme YourScheme \
+                   -configuration Release \
+                   -sdk iphoneos \
+                   -archivePath $PWD/build/YourApp.xcarchive \
+                   CODE_SIGNING_ALLOWED=NO \
+                   CODE_SIGNING_REQUIRED=NO \
+                   CODE_SIGN_IDENTITY="" \
+                   PROVISIONING_PROFILE_SPECIFIER="" \
+                   archive
+        # 코드가 xcodeproj 기반이라면 -workspace 대신 -project YourProject.xcodeproj 사용
+        # YourProject, YourScheme 부분을 본인 프로젝트 이름으로 변경 필수
+
+    - name: Export IPA
+      run: |
+        xcodebuild -exportArchive \
+                   -archivePath $PWD/build/YourApp.xcarchive \
+                   -exportPath $PWD/build/ipa \
+                   -exportOptionsPlist ExportOptions.plist \
+                   CODE_SIGNING_ALLOWED=NO
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TrollStore-IPA
+        path: build/ipa/*.ipa
