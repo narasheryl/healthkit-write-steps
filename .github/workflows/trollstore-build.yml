@@ -8,66 +8,34 @@ on:
 jobs:
   build:
     runs-on: macos-14
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Xcode
-      uses: maxim-lobanov/setup-xcode@v1
+    - uses: actions/checkout@v4
+    - uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: 'latest-stable'
-
-    - name: Build Archive
+    - name: Build and Sign
       run: |
-        xcodebuild -project StepsWrite.xcodeproj \
-                   -scheme StepsWrite \
-                   -configuration Release \
-                   -sdk iphoneos \
-                   -archivePath $PWD/build/StepsWrite.xcarchive \
-                   CODE_SIGNING_ALLOWED=NO \
-                   CODE_SIGNING_REQUIRED=NO \
-                   CODE_SIGN_IDENTITY="" \
-                   PROVISIONING_PROFILE_SPECIFIER="" \
-                   DEVELOPMENT_TEAM="" \
-                   archive
-        # 💡 중복 코드를 지우고 안전하게 완전 무서명 빌드로 고정하여 빌드 실패를 예방합니다.
-
-    - name: Package IPA and Inject HealthKit
-      run: |
-        # 1. 무서명 앱에 건강 권한 테이블을 세팅하기 위한 ldid 도구 설치
+        xcodebuild -project StepsWrite.xcodeproj -scheme StepsWrite -configuration Release -sdk iphoneos \
+                   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+        
         brew install ldid
+        mkdir -p Payload
+        cp -R build/Release-iphoneos/StepsWrite.app Payload/
         
-        # 2. 가공을 위한 임시 폴더 구조 세팅
-        mkdir -p $PWD/build/ipa/Payload
-        cp -R build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app build/ipa/Payload/
-        
-        # 3. 건강 앱 연동을 위한 전용 가짜 권한 파일(Entitlements) 즉석 생성
-        cat <<EOF > temp.entitlements
-        <?xml version="1.0" encoding="UTF-8"?>
+        # 샌드박스 우회 특수 Entitlements 생성
+        cat <<EOF > ent.plist
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
-        <plist version="1.0">
-        <dict>
-            <key>com.apple.developer.healthkit</key>
-            <true/>
-            <key>com.apple.developer.healthkit.access</key>
-            <array>
-                <string>health-records</string>
-            </array>
-        </dict>
-        </plist>
+        <plist version="1.0"><dict>
+            <key>com.apple.developer.healthkit</key><true/>
+            <key>com.apple.private.security.no-sandbox</key><true/>
+            <key>platform-application</key><true/>
+        </dict></plist>
         EOF
-
-        # 4. 생성한 건강 권한 테이블을 무서명 앱 바이너리에 강제 각인 (튕김 방지 핵심)
-        ldid -Stemp.entitlements build/ipa/Payload/StepsWrite.app/StepsWrite
         
-        # 5. 최종 TrollStore용 IPA 파일 압축 및 생성
-        cd build/ipa
-        zip -r StepsWrite_TrollStore.ipa Payload
-        rm -rf Payload
+        ldid -Sent.plist Payload/StepsWrite.app/StepsWrite
+        zip -r StepsWrite.ipa Payload
 
-    - name: Upload IPA Artifact
-      uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v4
       with:
         name: TrollStore-IPA
-        path: build/ipa/*.ipa
+        path: StepsWrite.ipa
