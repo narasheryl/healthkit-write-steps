@@ -11,48 +11,45 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.2.2
 
     - name: Set up Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: 'latest-stable'
 
-    - name: Build Archive
+    - name: Build with Xcode
       run: |
+        # xcarchive 아카이브 단계를 거치지 않고, 
+        # 트롤스토어에 바로 쓸 수 있는 원본 (.app) 파일을 Release 모드로 정석 빌드합니다.
         xcodebuild -project StepsWrite.xcodeproj \
                    -scheme StepsWrite \
                    -configuration Release \
                    -sdk iphoneos \
-                   -archivePath $PWD/build/StepsWrite.xcarchive \
+                   CONFIGURATION_BUILD_DIR=$PWD/build/output \
                    CODE_SIGNING_ALLOWED=NO \
                    CODE_SIGNING_REQUIRED=NO \
                    CODE_SIGN_IDENTITY="" \
                    PROVISIONING_PROFILE_SPECIFIER="" \
                    DEVELOPMENT_TEAM="" \
-                   archive
+                   build
 
     - name: Package IPA and Bypass HealthKit Sandbox
       run: |
-        # 1. 가짜 서명 도구 ldid 설치 (Homebrew 경고가 떠도 정상 설치됨)
+        export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
         brew install ldid
         
-        # 2. 패키징 폴더 생성
+        # 1. 패키징 전용 Payload 폴더 생성
         mkdir -p Payload
         
-        # 3. 🔥 핵심 교정: 이름 유추 실패 방지를 위해 .app 파일 실시간 자동 탐색 및 복사
-        APP_PATH=$(find build/StepsWrite.xcarchive/Products/Applications -name "*.app" | head -n 1)
-        if [ -z "$APP_PATH" ]; then
-          echo "❌ 빌드된 .app 파일을 찾을 수 없습니다. Xcode 빌드 단계를 다시 확인하세요."
-          exit 1
-        fi
-        cp -R "$APP_PATH" Payload/
+        # 2. 확실하게 지정된 output 폴더에서 .app 전체 구조(하위 파일 포함)를 복사
+        cp -R build/output/*.app Payload/
         
-        # 4. 복사된 파일명 및 바이너리명 추출
-        APP_NAME=$(basename "$APP_PATH")
+        # 3. 실제 복사된 내부 앱 이름과 실행 바이너리 명칭 자동 추출
+        APP_NAME=$(basename Payload/*.app)
         BINARY_NAME="${APP_NAME%.app}"
         
-        # 5. 건강 앱 우회 권한 테이블 제조
+        # 4. iOS 16.6.1 건강 앱 보안 샌드박스를 강제 해제하는 특수 권한 테이블 생성
         cat <<EOF > trollstore_health.entitlements
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
@@ -68,14 +65,14 @@ jobs:
         </plist>
         EOF
 
-        # 6. 자동 매칭된 바이너리에 건강 앱 샌드박스 우회 낙인 주입
+        # 5. 알맹이가 꽉 찬 내부 바이너리에 건강 연동 권한 도장 찍기
         ldid -Strollstore_health.entitlements "Payload/$APP_NAME/$BINARY_NAME"
         
-        # 7. 최종 트롤스토어 전용 IPA 생성
+        # 6. 최종 트롤스토어 전용 IPA 파일 압축 생성
         zip -r StepsWrite_TrollStore.ipa Payload
 
     - name: Upload IPA Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4.4.0
       with:
         name: TrollStore-IPA
         path: StepsWrite_TrollStore.ipa
