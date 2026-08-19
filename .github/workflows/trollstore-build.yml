@@ -2,8 +2,8 @@ name: Build TrollStore IPA
 
 on:
   push:
-    branches: [ "master" ] # 👈 현재 브랜치인 master로 지정
-  workflow_dispatch: # Actions 탭에서 수동 실행 버튼 활성화
+    branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -30,13 +30,22 @@ jobs:
                    CODE_SIGN_IDENTITY="" \
                    PROVISIONING_PROFILE_SPECIFIER="" \
                    DEVELOPMENT_TEAM="" \
+                   CODE_SIGN_ENTITLEMENTS="StepsWrite.entitlements" \
                    archive
-        # xcworkspace 대신 .xcodeproj 설정과 실제 이름(StepsWrite)을 반영했습니다.
+        # ⚠️ 만약 빌드 에러가 나면 "StepsWrite/StepsWrite.entitlements" 부분을 
+        # 실제 프로젝트 폴더 안에 있는 .entitlements 파일 경로에 맞게 수정해 주세요.
 
     - name: Package IPA Manually
       run: |
+        # 1. 무서명 바이너리에 건강 앱 권한을 확실히 각인시키기 위한 ldid 도구 설치
+        brew install ldid
+        
+        # 2. 건강 앱 권한 강제 주입 (ldid 부호화)
+        ldid -SStepsWrite/StepsWrite.entitlements build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app/StepsWrite
+        
+        # 3. Payload 구조 수동 패키징 및 압축
         mkdir -p $PWD/build/ipa/Payload
-        cp -r $PWD/build/StepsWrite.xcarchive/Products/Applications/*.app $PWD/build/ipa/Payload/
+        cp -R $PWD/build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app $PWD/build/ipa/Payload/
         cd $PWD/build/ipa
         zip -r StepsWrite_TrollStore.ipa Payload
         rm -rf Payload
