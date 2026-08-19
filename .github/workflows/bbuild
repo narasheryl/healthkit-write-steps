@@ -1,0 +1,40 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build App & Preserve Entitlements
+        run: |
+          xcodebuild build \
+            -project *.xcodeproj \
+            -scheme $(xcodebuild -list -json | jq -r '.project.schemes[0]') \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            BUILD_DIR=build
+         
+          mkdir -p Payload
+          mv build/Release-iphoneos/*.app Payload/
+          zip -r App.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HealthKitApp-IPA
+          path: App.ipa
