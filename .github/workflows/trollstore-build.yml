@@ -25,28 +25,28 @@ jobs:
                    -configuration Release \
                    -sdk iphoneos \
                    -archivePath $PWD/build/StepsWrite.xcarchive \
-                   CODE_SIGNING_ALLOWED=NO \
+                   CODE_SIGNING_ALLOWED=YES \
                    CODE_SIGNING_REQUIRED=NO \
-                   CODE_SIGN_IDENTITY="" \
+                   CODE_SIGN_IDENTITY="Apple Development" \
                    PROVISIONING_PROFILE_SPECIFIER="" \
                    DEVELOPMENT_TEAM="" \
                    CODE_SIGN_ENTITLEMENTS="StepsWrite.entitlements" \
                    archive
-        # ⚠️ 만약 빌드 에러가 나면 "StepsWrite/StepsWrite.entitlements" 부분을 
-        # 실제 프로젝트 폴더 안에 있는 .entitlements 파일 경로에 맞게 수정해 주세요.
+        # 💡 ALLOWED=YES와 임시 IDENTITY를 주어야 건강 앱 권한(Entitlements) 정보가 
+        # 앱 바이너리 파일 내부에 누락 없이 완벽하게 컴파일되어 포함됩니다.
 
     - name: Package IPA Manually
       run: |
-        # 1. 무서명 바이너리에 건강 앱 권한을 확실히 각인시키기 위한 ldid 도구 설치
+        # 1. 무서명 바이너리에 건강 앱 권한 테이블을 강제 주입하기 위한 ldid 도구 설치
         brew install ldid
         
-        # 2. 건강 앱 권한 강제 주입 (ldid 부호화)
-        ldid -SStepsWrite/StepsWrite.entitlements build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app/StepsWrite
+        # 2. ldid 도구를 사용해 건강 앱 자격 증명(Entitlements)을 최종 각인
+        ldid -SStepsWrite.entitlements build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app/StepsWrite
         
-        # 3. Payload 구조 수동 패키징 및 압축
+        # 3. Payload 구조 생성 및 수동 패키징 압축
         mkdir -p $PWD/build/ipa/Payload
-        cp -R $PWD/build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app $PWD/build/ipa/Payload/
-        cd $PWD/build/ipa
+        cp -R build/StepsWrite.xcarchive/Products/Applications/StepsWrite.app build/ipa/Payload/
+        cd build/ipa
         zip -r StepsWrite_TrollStore.ipa Payload
         rm -rf Payload
 
